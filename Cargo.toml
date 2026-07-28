@@ -1,0 +1,25 @@
+[package]
+name = "free-dap-programmer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+panic-halt = "0.2"
+
+embassy-executor = { version = "0.7", features = ["arch-cortex-m", "executor-thread"] }
+embassy-stm32 = { version = "0.6", features = ["stm32l412c8", "time-driver-any", "memory-x"] }
+embassy-time = { version = "0.5", features = ["generic-queue-64"] }
+embassy-usb = "0.6.0"
+static_cell = "2.1.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = false
+debug = true
+
+[build-dependencies]
+cc = "1.4.0"
