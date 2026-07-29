@@ -24,6 +24,28 @@ unsafe extern "C" {
     fn dap_process_request(req: *const u8, req_size: i32, resp: *mut u8, resp_size: i32) -> i32;
 }
 
+fn free_dap_init() {
+    unsafe {
+        dap_init();
+    }
+}
+
+fn free_dap_process_request(req: &[u8], resp: &mut [u8]) -> usize {
+    let resp_len = unsafe {
+        dap_process_request(
+            req.as_ptr(),
+            req.len() as i32,
+            resp.as_mut_ptr(),
+            resp.len() as i32,
+        )
+    };
+
+    usize::try_from(resp_len)
+        .ok()
+        .filter(|&len| len <= resp.len())
+        .unwrap_or(0)
+}
+
 bind_interrupts!(struct Irqs {
     USB => embassy_stm32::usb::InterruptHandler<USB>;
 });
@@ -59,9 +81,7 @@ impl FreeDapGuard {
         let blue_led = OutputOpenDrain::new(pa8, Level::High, Speed::Low);
 
         // 3. Initialize free-dap C library
-        unsafe {
-            dap_init();
-        }
+        free_dap_init();
 
         Self {
             _swdio: swdio,
@@ -116,16 +136,9 @@ impl<'d, D: embassy_usb::driver::Driver<'d>> CmsisDapClass<'d, D> {
         loop {
             match self.ep_out.read(&mut rx_buf).await {
                 Ok(n) if n > 0 => {
-                    let resp_len = unsafe {
-                        dap_process_request(
-                            rx_buf.as_ptr(),
-                            n as i32,
-                            tx_buf.as_mut_ptr(),
-                            tx_buf.len() as i32,
-                        )
-                    };
+                    let resp_len = free_dap_process_request(&rx_buf[..n], &mut tx_buf);
                     if resp_len > 0 {
-                        let _ = self.ep_in.write(&tx_buf[..resp_len as usize]).await;
+                        let _ = self.ep_in.write(&tx_buf[..resp_len]).await;
                     }
                 }
                 Ok(_) => {}
@@ -171,16 +184,15 @@ async fn main(spawner: Spawner) {
     let _red_led = OutputOpenDrain::new(p.PA9, Level::Low, Speed::Low);
 
     let _free_dap = FreeDapGuard::init(p.PA3, p.PA4, p.PA5, p.PA6, p.PA7, p.PA8);
-    core::mem::forget(_free_dap);
 
     // Setup USB Driver on PA11 / PA12
     let usb_driver = embassy_stm32::usb::Driver::new(p.USB, Irqs, p.PA12, p.PA11);
 
     // 0x1209:0x0001 = Official Open Source Hardware VID/PID
     let mut usb_config = embassy_usb::Config::new(0x1209, 0x0001);
-    usb_config.manufacturer = Some("N*GGERS CORP.");
+    usb_config.manufacturer = Some("free-dap");
     usb_config.product = Some("CMSIS-DAP v2 Programmer");
-    usb_config.serial_number = Some(get_serial_number());
+    usb_config.serial_number = Some(embassy_stm32::uid::uid_hex());
     usb_config.max_power = 100;
 
     static CONFIG_DESCRIPTOR: StaticCell<[u8; 256]> = StaticCell::new();
@@ -207,23 +219,4 @@ async fn main(spawner: Spawner) {
     spawner.spawn(usb_task(builder.build())).unwrap();
 
     dap_class.run().await;
-}
-
-/// Reads the STM32L4 96-bit factory Unique Hardware ID (UID) at 0x1FFF7590
-/// and converts it into a 24-character hex string.
-fn get_serial_number() -> &'static str {
-    static SERIAL_BUF: StaticCell<[u8; 24]> = StaticCell::new();
-    let buf = SERIAL_BUF.init([0u8; 24]);
-    const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
-
-    let uid_ptr = 0x1FFF_7590 as *const u8;
-
-    for i in 0..12 {
-        // Raw memory read of the factory hardware ID register
-        let byte = unsafe { uid_ptr.add(i).read_volatile() };
-        buf[i * 2] = HEX_DIGITS[(byte >> 4) as usize];
-        buf[i * 2 + 1] = HEX_DIGITS[(byte & 0x0F) as usize];
-    }
-
-    core::str::from_utf8(buf).unwrap()
 }
