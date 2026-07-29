@@ -179,7 +179,7 @@ async fn main(spawner: Spawner) {
     // 0x1209:0x0001 = Official Open Source Hardware VID/PID
     let mut usb_config = embassy_usb::Config::new(0x1209, 0x0001);
     usb_config.manufacturer = Some("N*GGERS CORP.");
-    usb_config.product = Some("CMSIS-DAP v2 Programmer");
+    usb_config.product = Some("CMSIS-DAP v2");
     usb_config.serial_number = Some(embassy_stm32::uid::uid_hex());
     usb_config.max_power = 100;
 
