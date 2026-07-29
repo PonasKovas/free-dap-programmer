@@ -180,7 +180,7 @@ async fn main(spawner: Spawner) {
     let mut usb_config = embassy_usb::Config::new(0x1209, 0x0001);
     usb_config.manufacturer = Some("N*GGERS CORP.");
     usb_config.product = Some("CMSIS-DAP v2 Programmer");
-    usb_config.serial_number = Some(get_serial_number());
+    usb_config.serial_number = Some(embassy_stm32::uid::uid_hex());
     usb_config.max_power = 100;
 
     static CONFIG_DESCRIPTOR: StaticCell<[u8; 256]> = StaticCell::new();
@@ -207,23 +207,4 @@ async fn main(spawner: Spawner) {
     spawner.spawn(usb_task(builder.build())).unwrap();
 
     dap_class.run().await;
-}
-
-/// Reads the STM32L4 96-bit factory Unique Hardware ID (UID) at 0x1FFF7590
-/// and converts it into a 24-character hex string.
-fn get_serial_number() -> &'static str {
-    static SERIAL_BUF: StaticCell<[u8; 24]> = StaticCell::new();
-    let buf = SERIAL_BUF.init([0u8; 24]);
-    const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
-
-    let uid_ptr = 0x1FFF_7590 as *const u8;
-
-    for i in 0..12 {
-        // Raw memory read of the factory hardware ID register
-        let byte = unsafe { uid_ptr.add(i).read_volatile() };
-        buf[i * 2] = HEX_DIGITS[(byte >> 4) as usize];
-        buf[i * 2 + 1] = HEX_DIGITS[(byte & 0x0F) as usize];
-    }
-
-    core::str::from_utf8(buf).unwrap()
 }
