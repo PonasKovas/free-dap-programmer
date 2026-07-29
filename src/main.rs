@@ -180,7 +180,7 @@ async fn main(spawner: Spawner) {
     let mut usb_config = embassy_usb::Config::new(0x1209, 0x0001);
     usb_config.manufacturer = Some("N*GGERS CORP.");
     usb_config.product = Some("CMSIS-DAP v2 Programmer");
-    usb_config.serial_number = Some(get_serial_number());
+    usb_config.serial_number = Some(embassy_stm32::uid::uid_hex());
     usb_config.max_power = 100;
 
     static CONFIG_DESCRIPTOR: StaticCell<[u8; 256]> = StaticCell::new();
@@ -207,8 +207,4 @@ async fn main(spawner: Spawner) {
     spawner.spawn(usb_task(builder.build())).unwrap();
 
     dap_class.run().await;
-}
-
-fn get_serial_number() -> &'static str {
-    embassy_stm32::uid::uid_hex()
 }
